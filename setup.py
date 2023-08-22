@@ -9,7 +9,7 @@ from typing import Dict
 PACKAGE_NAME = 'nucypher_ops'
 BASE_DIR = Path(__file__).parent
 
-ABOUT: Dict[str, str] = dict()
+ABOUT: Dict[str, str] = {}
 SOURCE_METADATA_PATH = BASE_DIR / PACKAGE_NAME / "__about__.py"
 with open(str(SOURCE_METADATA_PATH.resolve())) as f:
     exec(f.read(), ABOUT)

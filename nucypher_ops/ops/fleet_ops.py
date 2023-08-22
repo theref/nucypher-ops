@@ -131,14 +131,13 @@ class BaseCloudNodeConfigurator:
 
         self.envvars = envvars or []
         if self.envvars:
-            if not all([(len(v.split('=')) == 2) for v in self.envvars]):
+            if any(len(v.split('=')) != 2 for v in self.envvars):
                 raise ValueError(
                     "Improperly specified environment variables: --env variables must be specified in pairs as `<name>=<value>`")
             self.envvars = [v.split('=') for v in (self.envvars)]
 
-        cliargs = cliargs or []
         self.cliargs = []
-        if cliargs:
+        if cliargs := cliargs or []:
             for arg in cliargs:
                 if '=' in arg:
                     self.cliargs.append(arg.split('='))
@@ -157,7 +156,7 @@ class BaseCloudNodeConfigurator:
 
         # where we save our state data so we can remember the resources we created for future use
         self.config_path = self.network_config_path / \
-            self.namespace / self.config_filename
+                self.namespace / self.config_filename
         self.config_dir = self.config_path.parent
 
         # print (self.config_path)
@@ -303,7 +302,7 @@ class BaseCloudNodeConfigurator:
 
             data_key = f'runtime_{datatype}'
 
-            input_data = [(k, v) for k, v in getattr(self, datatype)]
+            input_data = list(getattr(self, datatype))
 
             # populate the specified environment variables as well as the
             # defaults that are only used in the inventory
@@ -322,7 +321,7 @@ class BaseCloudNodeConfigurator:
             # but overridden on a per node basis if previously specified
             for key, node in nodes.items():
                 for k, v in defaults[datatype]:
-                    if not k in nodes[key][data_key]:
+                    if k not in nodes[key][data_key]:
                         nodes[key][data_key][k] = v
                 if generate_keymaterial or kwargs.get('migrate_nucypher') or kwargs.get('init'):
                     node['keymaterial'] = keypairs[node['index']][1]
@@ -423,8 +422,8 @@ class BaseCloudNodeConfigurator:
                     "Proceeding with this operation will delete your node's eth wallet so make sure it does not posses any significant funds... Are you sure? (type 'yes')") == 'yes'
             if not keep_going:
                 return
-            if migrate_nucypher:
-                self.migrate(**kwargs)
+        if migrate_nucypher:
+            self.migrate(**kwargs)
 
         playbook = Path(PLAYBOOKS).joinpath('setup_remote_workers.yml')
 
@@ -434,7 +433,7 @@ class BaseCloudNodeConfigurator:
             self.emitter.echo(
                 "--- Giving newly created nodes some time to get ready ----")
             with self.emitter.progressbar(range(0, 30), show_eta=False, show_percent=False) as bar:
-                for tick in bar:
+                for _ in bar:
                     time.sleep(1)
         self.emitter.echo(
             'Running ansible deployment for all running nodes.', color='green')
@@ -459,7 +458,7 @@ class BaseCloudNodeConfigurator:
             inventory=inventory,
             variable_manager=variable_manager,
             loader=loader,
-            passwords=dict(),
+            passwords={},
         )
         executor._tqm._stdout_callback = callback
         executor.run()
@@ -498,7 +497,7 @@ class BaseCloudNodeConfigurator:
             inventory=inventory,
             variable_manager=variable_manager,
             loader=loader,
-            passwords=dict(),
+            passwords={},
         )
         executor._tqm._stdout_callback = callback
         executor.run()
@@ -525,7 +524,7 @@ class BaseCloudNodeConfigurator:
                 inventory=inventory,
                 variable_manager=variable_manager,
                 loader=loader,
-                passwords=dict(),
+                passwords={},
             )
             executor._tqm._stdout_callback = callback
             executor.run()
@@ -551,7 +550,7 @@ class BaseCloudNodeConfigurator:
             inventory=inventory,
             variable_manager=variable_manager,
             loader=loader,
-            passwords=dict(),
+            passwords={},
         )
         executor._tqm._stdout_callback = callback
         executor.run()
@@ -576,7 +575,7 @@ class BaseCloudNodeConfigurator:
             inventory=inventory,
             variable_manager=variable_manager,
             loader=loader,
-            passwords=dict(),
+            passwords={},
         )
         executor._tqm._stdout_callback = callback
         executor.run()
@@ -600,7 +599,7 @@ class BaseCloudNodeConfigurator:
             inventory=inventory,
             variable_manager=variable_manager,
             loader=loader,
-            passwords=dict(),
+            passwords={},
         )
         executor._tqm._stdout_callback = callback
         executor.run()
@@ -625,7 +624,7 @@ class BaseCloudNodeConfigurator:
             inventory=inventory,
             variable_manager=variable_manager,
             loader=loader,
-            passwords=dict(),
+            passwords={},
         )
         executor._tqm._stdout_callback = callback
         executor.run()
@@ -640,10 +639,7 @@ class BaseCloudNodeConfigurator:
     def get_namespace_names(self, namespace=None):
         if os.path.exists(self.network_config_path):
             for ns in self.network_config_path.iterdir():
-                if namespace:
-                    if namespace == ns.stem:
-                        yield ns.stem
-                else:
+                if namespace and namespace == ns.stem or not namespace:
                     yield ns.stem
 
     def get_namespace_data(self, namespace=None):
@@ -663,7 +659,7 @@ class BaseCloudNodeConfigurator:
             return None
 
     def get_all_hosts(self):
-        return [(node_name, host_data) for node_name, host_data in self.config.get('instances', {}).items()]
+        return list(self.config.get('instances', {}).items())
 
     def add_already_configured_node(self, host_data):
         if self.get_host_by_name(host_data['host_nickname']):
@@ -785,7 +781,10 @@ class BaseCloudNodeConfigurator:
         user = next(v['value'] for v in host_data['provider_deploy_attrs']
                     if v['key'] == 'default_user')
 
-        if any([pda['key'] == 'ansible_ssh_private_key_file' for pda in host_data['provider_deploy_attrs']]):
+        if any(
+            pda['key'] == 'ansible_ssh_private_key_file'
+            for pda in host_data['provider_deploy_attrs']
+        ):
             keypair = '-i "' + next(v['value'] for v in host_data['provider_deploy_attrs']
                                     if v['key'] == 'ansible_ssh_private_key_file') + '"'
 
@@ -832,10 +831,12 @@ class BaseCloudNodeConfigurator:
 
     def remove_resources(self, hostnames):
         for host in hostnames:
-            existing_instances = {k: v for k, v in self.config.get(
-                'instances', {}).items() if k in hostnames}
-            if existing_instances:
-                for node_name, instance in existing_instances.items():
+            if existing_instances := {
+                k: v
+                for k, v in self.config.get('instances', {}).items()
+                if k in hostnames
+            }:
+                for node_name in existing_instances:
                     self.emitter.echo(
                         f"removing instance data for {node_name} in 3 seconds...", color='red')
                     time.sleep(3)
@@ -875,9 +876,7 @@ class BaseCloudNodeConfigurator:
     @needs_provider
     def get_wallet_balance(self, web3, address, eth=False):
         balance = web3.eth.get_balance(address)
-        if eth:
-            return web3.fromWei(balance, 'ether')
-        return balance
+        return web3.fromWei(balance, 'ether') if eth else balance
 
     @needs_registry
     @needs_provider
@@ -924,7 +923,7 @@ class BaseCloudNodeConfigurator:
                     f"host {name} already has {existing_balance} ETH.  funded.")
             else:
                 tx_hash = self.send_eth(wallet, host_op_address, amount)
-                while next_tx is False:
+                while not next_tx:
 
                     try:
                         tx_state = web3.eth.get_transaction(tx_hash)
@@ -988,12 +987,11 @@ class BaseCloudNodeConfigurator:
 
                     if amount_to_send < 0:
                         msg = f"amount to send, including transaction gas: {web3.fromWei(max(amount_to_send, needed_gas), 'ether')} is more than total available ETH ({web3.fromWei(balance, 'ether')})"
-                        if len(hostnames) > 1:
-                            # keep going but notify
-                            self.emitter.echo(msg)
-                            continue
-                        else:
+                        if len(hostnames) <= 1:
                             raise AttributeError(msg)
+                        # keep going but notify
+                        self.emitter.echo(msg)
+                        continue
                     self.emitter.echo(
                         f"Attempting to send {web3.fromWei(amount_to_send, 'ether')} ETH from {hostname} to {to} in 3 seconds.")
                     time.sleep(3)
@@ -1024,7 +1022,7 @@ class DigitalOceanConfigurator(BaseCloudNodeConfigurator):
         if region := self.kwargs.get('region') or os.environ.get('DIGITALOCEAN_REGION') or self.config.get(
                 'digital-ocean-region'):
             self.emitter.echo(f'Using Digital Ocean region: {region}')
-            if not region in regions:
+            if region not in regions:
                 raise AttributeError(
                     f"{region} is not a valid DigitalOcean region. Find available regions here: https://www.digitalocean.com/docs/platform/availability-matrix/")
         else:
@@ -1053,10 +1051,11 @@ class DigitalOceanConfigurator(BaseCloudNodeConfigurator):
             self.token = os.environ.get('DIGITALOCEAN_ACCESS_TOKEN')
         if not self.token:
             self.token = self.emitter.prompt(
-                f"Please enter your Digital Ocean Access Token which can be created here: https://cloud.digitalocean.com/account/api/tokens.  It looks like this: b34abcDEF17ABCDEFAbcDEf09fd72a28425ABCDEF8b198e9623ABCDEFc11591.  You can also `export DIGITALOCEAN_ACCESS_TOKEN=<the token>`")
-            if not self.token:
-                raise AttributeError(
-                    "Could not continue without token or DIGITALOCEAN_ACCESS_TOKEN environment variable.")
+                "Please enter your Digital Ocean Access Token which can be created here: https://cloud.digitalocean.com/account/api/tokens.  It looks like this: b34abcDEF17ABCDEFAbcDEf09fd72a28425ABCDEF8b198e9623ABCDEFc11591.  You can also `export DIGITALOCEAN_ACCESS_TOKEN=<the token>`"
+            )
+        if not self.token:
+            raise AttributeError(
+                "Could not continue without token or DIGITALOCEAN_ACCESS_TOKEN environment variable.")
 
         self.region = self.get_region()
 
@@ -1067,14 +1066,15 @@ class DigitalOceanConfigurator(BaseCloudNodeConfigurator):
             self.sshkey = os.environ.get('DIGITAL_OCEAN_KEY_FINGERPRINT')
         if not self.sshkey:
             self.sshkey = self.emitter.prompt(
-                f"Please `enter the fingerprint of a Digital Ocean SSH Key which can be created here: https://cloud.digitalocean.com/account/security.  They look like this: 8a:db:8f:4c:b1:61:fa:84:21:30:4d:d6:77:3b:a1:4d")
-            if not self.sshkey:
-                self.emitter.echo(
-                    "Please set the name of your Digital Ocean SSH Key (`export DIGITAL_OCEAN_KEY_FINGERPRINT=<your preferred ssh key fingerprint>` from here: https://cloud.digitalocean.com/account/security", color="red")
-                self.emitter.echo(
-                    "it should look like `DIGITAL_OCEAN_KEY_FINGERPRINT=88:fb:53:51:09:aa:af:02:e2:99:95:2d:39:64:c1:64`\n", color="red")
-                raise AttributeError(
-                    "Could not continue without DIGITAL_OCEAN_KEY_FINGERPRINT.")
+                "Please `enter the fingerprint of a Digital Ocean SSH Key which can be created here: https://cloud.digitalocean.com/account/security.  They look like this: 8a:db:8f:4c:b1:61:fa:84:21:30:4d:d6:77:3b:a1:4d"
+            )
+        if not self.sshkey:
+            self.emitter.echo(
+                "Please set the name of your Digital Ocean SSH Key (`export DIGITAL_OCEAN_KEY_FINGERPRINT=<your preferred ssh key fingerprint>` from here: https://cloud.digitalocean.com/account/security", color="red")
+            self.emitter.echo(
+                "it should look like `DIGITAL_OCEAN_KEY_FINGERPRINT=88:fb:53:51:09:aa:af:02:e2:99:95:2d:39:64:c1:64`\n", color="red")
+            raise AttributeError(
+                "Could not continue without DIGITAL_OCEAN_KEY_FINGERPRINT.")
 
         self.config['sshkey'] = self.sshkey
         self.config['digital-ocean-region'] = self.region
@@ -1134,15 +1134,15 @@ class DigitalOceanConfigurator(BaseCloudNodeConfigurator):
 
     def _destroy_resources(self, node_names):
 
-        existing_instances = {
-            k: v for k, v in self.get_provider_hosts() if k in node_names}
-        if existing_instances:
+        if existing_instances := {
+            k: v for k, v in self.get_provider_hosts() if k in node_names
+        }:
             self.emitter.echo(
                 f"\nAbout to destroy the following: {', '.join(existing_instances.keys())}, including all local data about these nodes.")
             self.emitter.echo("\ntype 'y' to continue")
             if self.emitter.getchar(echo=False) == 'y':
                 for node_name, instance in existing_instances.items():
-                    if node_names and not node_name in node_names:
+                    if node_names and node_name not in node_names:
                         continue
                     self.emitter.echo(
                         f"deleting worker instance for {node_name} in 3 seconds...", color='red')
@@ -1154,15 +1154,17 @@ class DigitalOceanConfigurator(BaseCloudNodeConfigurator):
                             "Authorization": f'Bearer {self.token}'
                         })
 
-                    if result.status_code == 204 or 'not_found' in result.text:
-                        self.emitter.echo(
-                            f"\tdestroyed instance for {node_name}")
-                        del self.config['instances'][node_name]
-                        self._write_config()
-                    else:
+                    if (
+                        result.status_code != 204
+                        and 'not_found' not in result.text
+                    ):
                         raise Exception(
                             f"Errors occurred while deleting node: {result.text}")
 
+                    self.emitter.echo(
+                        f"\tdestroyed instance for {node_name}")
+                    del self.config['instances'][node_name]
+                    self._write_config()
         return True
 
 
@@ -1326,8 +1328,7 @@ class AWSNodeConfigurator(BaseCloudNodeConfigurator):
             return
 
         if not self.vpc:
-            vpc_id = self.config.get('Vpc')
-            if vpc_id:
+            if vpc_id := self.config.get('Vpc'):
                 self.vpc = self.ec2Resource.Vpc(vpc_id)
             else:
                 try:
@@ -1430,7 +1431,7 @@ class AWSNodeConfigurator(BaseCloudNodeConfigurator):
         vpc = self.ec2Resource.Vpc(self.config['Vpc'])
         if existing_instances:
             for node_name, instance in existing_instances.items():
-                if node_names and not node_name in node_name:
+                if node_names and node_name not in node_name:
                     continue
                 self.emitter.echo(
                     f"deleting worker instance for {node_name} in 3 seconds...", color='red')
@@ -1614,7 +1615,7 @@ class GenericDeployer(BaseCloudNodeConfigurator):
             inventory=inventory,
             variable_manager=variable_manager,
             loader=loader,
-            passwords=dict(),
+            passwords={},
         )
         executor._tqm._stdout_callback = callback
         executor.run()
@@ -1649,7 +1650,7 @@ class GenericDeployer(BaseCloudNodeConfigurator):
 
             data_key = f'runtime_{datatype}'
 
-            input_data = [(k, v) for k, v in getattr(self, datatype)]
+            input_data = list(getattr(self, datatype))
 
             # populate the specified environment variables as well as the
             # defaults that are only used in the inventory
@@ -1666,9 +1667,9 @@ class GenericDeployer(BaseCloudNodeConfigurator):
             # we don't want to save the default_envvars to the config file
             # but we do want them to be specified to the inventory template
             # but overridden on a per node basis if previously specified
-            for key, node in nodes.items():
+            for key in nodes:
                 for k, v in defaults[datatype]:
-                    if not k in nodes[key][data_key]:
+                    if k not in nodes[key][data_key]:
                         nodes[key][data_key][k] = v
 
         for key, node in nodes.items():

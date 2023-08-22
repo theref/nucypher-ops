@@ -120,7 +120,7 @@ def fund(amount, namespace, network, include_hosts):
         else:  
             password = click.prompt('please enter a password for this new eth wallet', hide_input=True)
             passwordagain = click.prompt('please enter the same password again', hide_input=True)
-            if not password == passwordagain:
+            if password != passwordagain:
                 raise AttributeError("passwords dont' match please try again.")
 
     wallet = deployer.get_or_create_local_wallet(password)

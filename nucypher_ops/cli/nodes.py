@@ -24,9 +24,9 @@ def create(region, instance_type, cloudprovider, count, nickname, namespace, net
 
 
     available_providers = ['aws', 'digitalocean']
-    choice_list = '\n\t'.join(available_providers)
-
     if not cloudprovider:
+        choice_list = '\n\t'.join(available_providers)
+
         cloudprovider = emitter.prompt(
             f"Please choose a Cloud Service Provider from these options: \n\t{choice_list}\n",
             type=emitter.Choice(available_providers),
@@ -142,7 +142,7 @@ def destroy(cloudprovider, namespace, network, include_hosts):
         hosts = CloudDeployers.get_deployer('generic')(
             emitter, network=network, namespace=namespace).get_all_hosts()
         # check if there are hosts in this namespace
-        if len(set(host['provider'] for address, host in hosts)) == 1:
+        if len({host['provider'] for address, host in hosts}) == 1:
             cloudprovider = hosts[0][1]['provider']
         else:
             emitter.echo("Found hosts from multiple cloudproviders.")

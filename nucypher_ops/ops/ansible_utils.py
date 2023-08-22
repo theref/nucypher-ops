@@ -29,10 +29,7 @@ class AnsiblePlayBookResultsCollector(CallbackBase):
         if self.filter_output is not None:
             return
         name = play.get_name().strip()
-        if not name:
-            msg = '\nPLAY {}\n'.format('*' * 100)
-        else:
-            msg = '\nPLAY [{}] {}\n'.format(name, '*' * 100)
+        msg = f"\nPLAY {'*' * 100}\n" if not name else f"\nPLAY [{name}] {'*' * 100}\n"
         self.send_save(msg)
 
     def v2_playbook_on_task_start(self, task, is_conditional):
@@ -42,20 +39,20 @@ class AnsiblePlayBookResultsCollector(CallbackBase):
         if task.get_name() == 'Gathering Facts':
             return
 
-        msg = '\nTASK [{}] {}\n'.format(task.get_name(), '*' * 100)
+        msg = f"\nTASK [{task.get_name()}] {'*' * 100}\n"
         self.send_save(msg)
 
     def v2_runner_on_ok(self, result, *args, **kwargs):
         task_name = result._task.get_name()
 
-        if self.filter_output is not None and not task_name in self.filter_output:
+        if self.filter_output is not None and task_name not in self.filter_output:
             return
 
         if self.filter_output is None:
             if result.is_changed():
-                data = '[{}]=> changed'.format(result._host.name)
+                data = f'[{result._host.name}]=> changed'
             else:
-                data = '[{}]=> ok'.format(result._host.name)
+                data = f'[{result._host.name}]=> ok'
             self.send_save(
                 data, color='yellow' if result.is_changed() else 'green')
         if 'msg' in result._task_fields['args']:
@@ -65,8 +62,7 @@ class AnsiblePlayBookResultsCollector(CallbackBase):
             if self.results:
                 for k in self.results.keys():
                     regex = fr'{k}:\s*(?P<data>.*)'
-                    match = re.search(regex, msg, flags=re.MULTILINE)
-                    if match:
+                    if match := re.search(regex, msg, flags=re.MULTILINE):
                         self.results[k].append(
                             (result._host.name, match.groupdict()['data']))
 
@@ -75,20 +71,13 @@ class AnsiblePlayBookResultsCollector(CallbackBase):
             return
         if 'changed' in result._result:
             del result._result['changed']
-        data = 'fail: [{}]=> {}: {}'.format(
-            result._host.name, 'failed',
-            self._dump_results(result._result)
-        )
+        data = f'fail: [{result._host.name}]=> failed: {self._dump_results(result._result)}'
         self.send_save(data, color='red')
 
     def v2_runner_on_unreachable(self, result):
         if 'changed' in result._result:
             del result._result['changed']
-        data = '[{}]=> {}: {}'.format(
-            result._host.name,
-            'unreachable',
-            self._dump_results(result._result)
-        )
+        data = f'[{result._host.name}]=> unreachable: {self._dump_results(result._result)}'
         self.send_save(data)
 
     def v2_runner_on_skipped(self, result):
@@ -96,23 +85,18 @@ class AnsiblePlayBookResultsCollector(CallbackBase):
             return
         if 'changed' in result._result:
             del result._result['changed']
-        data = '[{}]=> {}: {}'.format(
-            result._host.name,
-            'skipped',
-            self._dump_results(result._result)
-        )
+        data = f'[{result._host.name}]=> skipped: {self._dump_results(result._result)}'
         self.send_save(data, color='blue')
 
     def v2_playbook_on_stats(self, stats):
         if self.filter_output is not None:
             return
         hosts = sorted(stats.processed.keys())
-        data = '\nPLAY RECAP {}\n'.format('*' * 100)
+        data = f"\nPLAY RECAP {'*' * 100}\n"
         self.send_save(data)
         for h in hosts:
             s = stats.summarize(h)
-            msg = '{} : ok={} changed={} unreachable={} failed={} skipped={}'.format(
-                h, s['ok'], s['changed'], s['unreachable'], s['failures'], s['skipped'])
+            msg = f"{h} : ok={s['ok']} changed={s['changed']} unreachable={s['unreachable']} failed={s['failures']} skipped={s['skipped']}"
             self.send_save(msg)
 
     def send_save(self, data, color=None):

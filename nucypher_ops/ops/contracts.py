@@ -20,8 +20,7 @@ class NuCypherContractRegistry:
         self.network = network_name
 
     def get_publication_endpoint(self) -> str:
-        url = f"{self._BASE_URL}/development/nucypher/blockchain/eth/contract_registry/{self.network}/{self.registry_name}"
-        return url
+        return f"{self._BASE_URL}/development/nucypher/blockchain/eth/contract_registry/{self.network}/{self.registry_name}"
 
     def fetch_latest_publication(self) -> Union[str, bytes]:
         # Setup
@@ -35,5 +34,4 @@ class NuCypherContractRegistry:
         if response.status_code != 200:
             raise AttributeError(f"No registry found at {self.get_publication_endpoint()}")
 
-        registry_data = response.json()
-        return registry_data
+        return response.json()
